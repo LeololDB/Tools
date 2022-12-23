@@ -3,20 +3,25 @@
 #Dependencies:
 	#Lebray at	../Lebray
 	#CoCoder at	../40.CoCoder/CoCoder
-	#Versioning ./Versioning
-	#			./Stats/SizeGrapher (if you want to keep a log)
-	#UPX at		../upx
-#This script is optimised for a smaller size, by Léolol DB 1/12/12/2022
-WDir="`pwd`"
-CDir="$(dirname "$(realpath "$0")")"
+	#Versioning	./Versioning	(Optional: If you want to keep track of the different versions locally)
+	#		./Stats/SizeGrapher (Optionnal: If you want to keep a log)
+	#UPX at		../upx (Optionnal: If you want to have a smaller binary)
+#This script is now commented a bit for clarification, by Léolol DB 5/23/12/2022
+WDir="`pwd`"#Work directory
+CDir="$(dirname "$(realpath "$0")")"#Compile directory
 Bin="$(basename "$CDir")"
-Bin="${Bin:3}"
+Bin="${Bin:3}"#The name of the binary is the one of the Compile directory without the 3 first letters
 Com="clang++ -m64 -flto -Oz -fno-rtti -std=c++11 -ffast-math -fomit-frame-pointer -fno-exceptions -fno-unwind-tables -fno-math-errno -fno-asynchronous-unwind-tables -DLBRThreadSafe -c"
 Lnk="clang -m64 -flto -s -z norelro -z common-page-size=0 -z noseparate-code -fmerge-all-constants -fno-debug-macro -fno-threadsafe-statics -lpthread -o $Bin"
 Obj="/tmp/C++/Obj"
 
 End(){
-	./Stats/SizeGrapher Stats/Log Main.cc Main.cpp
+	if [ -f ./Stats/SizeGrapher];then ./Stats/SizeGrapher Stats/Log Main.cc Main.cpp;fiLebray (Mandatory)
+	if [ -f ./Versioning ];then
+		Out=$(./Versioning 0 19336 ./Stats/Versions)
+		if [ $? == 0 ];then cp Main.cc $Out;fi
+		echo $Out;
+	fi
 	exit
 }
 
@@ -46,13 +51,15 @@ cd "$CDir"
 
 	Stat Stripping
 	strip $Bin -R .note.gnu.build-id -R .gnu.hash -R .gnu.version -R .comment -R .shstrtab -R .got -R .eh_frame -R .eh_frame_hdr
-	../upx -9 $Bin
+	if [ -f ../upx ];then ../upx -9 $Bin;fi
 	wc -c $Bin
 
-	./Stats/SizeGrapher Stats/Log $Bin Main.cc Main.cpp
+	if [ -f ./Stats/SizeGrapher];then ./Stats/SizeGrapher Stats/Log $Bin Main.cc Main.cpp;fi
 	rm Main.cpp;
 	
-	Out=$(./Versioning 0 19336 ./Stats/Versions)
-	if [ $? == 0 ];then cp Main.cc $Out;fi
-	echo $Out;
+	if [ -f ./Versioning ];then
+		Out=$(./Versioning 0 19336 ./Stats/Versions)
+		if [ $? == 0 ];then cp Main.cc $Out;fi
+		echo $Out;
+	fi
 cd "$WDir"
