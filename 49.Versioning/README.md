@@ -2,16 +2,24 @@ This is a simple test program.
 ```
 			+=================+
 			| Examples of use |
-			+=================+
+Tabe of contents	+=================+
+↑ (0) Versioning [Day] [Month] [Year]
+| (1) Versioning [Period] [Ver] [Destination] ([VerFile])
+| (2) Versioning [SubVersion] ([VerFile])
++-[Legend]--------------------------------------------------------------+
+| [Value]		- Replaced by something else, like in English,	|
+|			[that] may be replaced by a sentence.		|
+| ([Optionnal Value])	- Same as a Value but optionnal.		|
++-----------------------------------------------------------------------+
 
-+---------------------------------+--------------+----------------------+
++-(0)-----------------------------+--------------+----------------------+
 | Versioning [Day] [Month] [Year] |		 | Versioning 19 5 1973 |
 +---------------------------------+		 +----------------------+
 | Gives the day time-stamp using the given date, here 19/05/1973.	|
 | It's important to use spaces. 					|
 +-----------------------------------------------------------------------+
 
-+-----------------------------------------------------------------------+
++-(1)-------------------------------------------------------------------+
 | Versioning [Period] [Ver] [Destination] ([VerFile])			|
 | Versioning 0 1234 OldFolder ./Stats/Ver	    Do you get the joke?|
 +-----------------------------------------------------------------------+
@@ -35,7 +43,7 @@ This is a simple test program.
 | Result: OldFolder/1.2.3.45/ is created.				|
 +-----------------------------------------------------------------------+
 
-+-------------------------------------+-----+---------------------------+
++-(2)---------------------------------+-----+---------------------------+
 | Versioning [SubVersion] ([VerFile]) |	    | Versioning 45 ./Stats/Ver |
 +-------------------------------------+	    +---------------------------+
 | Gives the day time-stamp using the given date, here 19/05/1973.	|
