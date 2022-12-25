@@ -1,18 +1,22 @@
 #!/bin/bash
 if [ ! -f ~/.config/fontconfig/ ];then
-	# mkdir ~/.config/fontconfig/
-	# cp ./fonts.conf ~/.config/fontconfig/
+	mkdir ~/.config/fontconfig/
+	cp ./fonts.conf ~/.config/fontconfig/
 fi
 
 if [ ! -f /usr/bin/SnakySnail3 ] && [ ! -f /usr/bin/SnakySnail ];then
 	A="`realpath /usr/bin/python3`"
 	if [ -f $A ];then
-		#sudo apt-get -y install pypy
+		sudo apt-get -y install pypy
 		mv /usr/bin/python3 /usr/bin/SnakySnail3
-		ln -s /usr/bin/pypy /usr/bin/python3
+		if [ $? != 0 ];then
+			echo "Verify you ran the script with sudo or doas."
+			exit
+		fi
+		ln /usr/bin/pypy /usr/bin/python3
 		if [ -f $A ];then
 			mv $A /usr/bin/SnakySnail
-			ln -s /usr/bin/pypy /usr/bin/python3
+			ln /usr/bin/pypy $A
 		fi
 	else
 		echo "/usr/bin/python3 is a lie!"
