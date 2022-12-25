@@ -11,7 +11,8 @@ if [ ! -f /usr/bin/SnakySnail3 ] && [ ! -f /usr/bin/SnakySnail ];then
 		mv /usr/bin/python3 /usr/bin/SnakySnail3
 		ln -s /usr/bin/pypy /usr/bin/python3
 		if [ -f $A ];then
-			mv $A /usr/bin/SnakySnail;
+			mv $A /usr/bin/SnakySnail
+			ln -s /usr/bin/pypy /usr/bin/python3
 		fi
 	else
 		echo "/usr/bin/python3 is a lie!"
