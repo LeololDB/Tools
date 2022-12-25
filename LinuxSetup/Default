@@ -1,20 +1,20 @@
 #!/bin/bash
 if [ -f ~/.config/fontconfig/ ];then
-	# cmp --quiet ./fonts.conf ~/.config/fontconfig/fonts.conf
-	# if [ $? == 0 ];then
-	# 	rm -r ~/.config/fontconfig/
-	# else
-	# 	echo "~/.config/fontconfig/fonts.conf was modified, remove it yourself if you want."
-	# fi
+	cmp --quiet ./fonts.conf ~/.config/fontconfig/fonts.conf
+	if [ $? == 0 ];then
+		rm -r ~/.config/fontconfig/
+	else
+		echo "~/.config/fontconfig/fonts.conf was modified, remove it yourself if you want."
+	fi
 fi
-sudo apt-get -y remove pypy
 if [ -f /usr/bin/SnakySnail3 ];then
 	rm /usr/bin/python3
+	if [ -f /usr/bin/SnakySnail ];then
+		rm "`realpath /usr/bin/SnakySnail3`"
+		mv /usr/bin/SnakySnail "`realpath /usr/bin/SnakySnail3`"
+	fi
 	mv /usr/bin/SnakySnail3 /usr/bin/python3
 else
 	echo SnakySnail3 not found
 fi
-if [ -f /usr/bin/SnakySnail ];then
-	rm "`realpath /usr/bin/python3`"
-	mv /usr/bin/SnakySnail "`realpath /usr/bin/python3`"
-fi
+sudo apt-get -y remove pypy
