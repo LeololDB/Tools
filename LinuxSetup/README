@@ -1,0 +1,6 @@
+# Setup Linux environment 
+This is intended for a Graphical Linux-like OS, this has currently been tested on Linux Mint.
+
+The Setup script is made so if you often create new Linux VMs or just has to setup correctly a Linux machine.  
+This script disables anti-aliasing, install PyPy and symlink PyPy as python3.
+The Default script reverts everything to default values, including uninstalling PyPy.
