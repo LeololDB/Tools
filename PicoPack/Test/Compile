@@ -1,0 +1,235 @@
+#!/bin/bash
+#Script used to compile and Asm, C and C++ project for the Raspberry Pi Pico
+#
+#Expects to be at the root of the project's directory
+#Requires the PicoSetup script from Léolol DB to have been run once
+#This script is built to always succeed by default, as long as the project doesn't contain errors
+#
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#								+===========+								#
+#								|  LICENSE  |								#
+#								+===========+								#
+# This is licensed under the terms of the Lebray Open\-Source License NW	#
+#																			#
+# This program was made in the hope to be useful WITHOUT ANY WARRANTY,		#
+# not even the warranty for the program to work nor to fit any purpose.		#
+# The user is solely responsible for their use of the program. This			#
+# program may be modified by anyone and shared to anyone but the program	#
+# alone must never be sold, as it's already available freely (⋅-. )			#
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+# Although hard-work has been put to make an helpful program that works out of the box unlike GNU, it might still fail.
+#By Léolol DB from the 7/23/04/2023 to the 6/29/04/2023
+
+# # # # # # # # # # # # # # # # # # # # #
+#		   _______________________		#
+#		 /|						  |		#
+#		| |  PROJECT'S VARIABLES  |		#
+#		| |_______________________|		#
+#		|/_______________________/		#
+#										#
+# # # # # # # # # # # # # # # # # # # # #
+#v Those are relative paths from the parent dir of this script
+CDir="."	#Dir to compile
+ Bin=""		#Name of the binary, if empty, will use the root folder's name
+
+   Flags="-DPICO_BOARD=\"pico\" -DPICO_CMAKE_BUILD_TYPE=\"Release\" -DPICO_TARGET_NAME=\"Test\" -mcpu=cortex-m0plus -mthumb -DNDEBUG"
+AsmFlags="-x assembler-with-cpp -ffunction-sections -fdata-sections"
+  CFlags="-x c -std=gnu11"
+CPPFlags="-x c++ -std=gnu++17 -fno-exceptions -fno-unwind-tables -fno-rtti -fno-use-cxa-atexit"
+ LDFlags="$Flags -Wl,--build-id=none --specs=nosys.specs"
+
+# Note: later in the code:
+#AsmFlags="$Flags $AsmFlags"
+#CFlags="$AsmFlags $CFlags"
+#CPPFlags="$AsmFlags $CPPFlags"
+
+
+Asm=""
+  C=""
+CPP=""
+ LD=""
+
+#List of assemblers, compilers and linkers to try
+Asms=("clang++ -Oz"			"arm-none-eabi-g++ -O3")
+  Cs=("clang   -Oz"			"arm-none-eabi-gcc -O3")
+CPPs=("clang++ -Oz"			"arm-none-eabi-g++ -O3")
+ LDs=("clang++ -Oz"	"ldd"	"arm-none-eabi-g++ -O3")
+
+#Default variables
+	PicoSDK="$PICO_SDK_PATH"
+	RDir="$(dirname "$(realpath "$0")")"	#"Root" directory
+	Name="$(basename "$RDir")"				#Name of the project
+	CDir="$RDir/$CDir"						#Compile directory
+	if [ "$Bin" == "" ];then
+		Bin="$RDir/$Name"
+		if [ "${Bin:2:1}" = "." ];then Bin="${Bin:3}";fi
+	else Bin="$RDir/$Bin";fi
+
+
+	Obj="/tmp/C++/Obj/$Name"
+# # # # # # # # # # # # # # # # #
+#		   ______________		#
+#		 /|				 |		#
+#		| |  CODE START  |		#
+#		| |______________|		#
+#		|/______________/		#
+#								#
+# # # # # # # # # # # # # # # # #
+	if [ "$1" == "-x" ];then
+		rm -r $Obj
+	fi
+	mkdir -p $Obj
+
+	End(){	#When anything failed
+		if [ "$1" == "" ];then
+			echo -e "\x1B[31mFailed\x1B[m"
+		else echo -e "\x1B[31m$1\x1B[m";fi
+		kill 0
+		exit
+	}
+
+	Stat(){	#Say the status
+		echo -e "\x1B[32m$1\x1B[m"
+	}
+Stat "Listing dirs to use"
+	RP2XXX="$PicoSDK/src/rp2_common"
+	DirsToUse=()
+	for i in "stdlib" "platform" "runtime" "bit_ops" "bootrom" "divider" "int64_ops" "double" "float" "printf" "malloc" "stdio" "stdio_uart" "unique_id";do DirsToUse+=($RP2XXX/pico_$i);done
+	for i in "gpio" "claim" "sync" "irq" "timer" "uart" "clocks" "pll" "pwm" "vreg" "watchdog" "xosc" "divider" "adc" "pio" "rtc" "flash" "interp" "base" "resets";do DirsToUse+=($RP2XXX/hardware_$i);done
+	for i in "sync" "time" "util" "binary_info";do DirsToUse+=($PicoSDK/src/common/pico_$i);done
+	for i in "hardware_regs" "hardware_structs" "include";do DirsToUse+=($PicoSDK/src/rp2040/$i);done
+	for i in "mem_ops/mem_ops_aeabi.S" "standard_link/crt0.S" "standard_link/new_delete.cpp" "standard_link/binary_info.c";do DirsToUse+=($RP2XXX/pico_$i);done
+	for i in "common/pico_stdlib" "rp2_common/hardware_gpio" "boards" "common/pico_base";do DirsToUse+=($PicoSDK/src/$i/include);done
+	DirsToUse+=("$RP2XXX/boot_stage2/bs2_default_padded_checksummed.S")
+Stat "${#DirsToUse[@]} dirs to use from the SDK"
+Stat "Adding optionnal defines that reduce the program's size"
+	for Dir in "${DirsToUse[@]}";do
+		DirName=$(basename "$Dir")
+		while [ "$DirName" == "include" ] || [ ! -d "$Dir" ];do
+			Dir=$(dirname "$Dir")
+			DirName=$(basename "$Dir")
+		done
+		
+		if [ "$DirName" != "." ];then
+			Flags="$Flags -DLIB_${DirName^^}=1 -DLIB_${DirName^^}_PICO=1"
+		fi
+	done
+
+	Flags="$Flags -DLIB_PICO_DIVIDER_HARDWARE=1 -DLIB_PICO_SYNC_CRITICAL_SECTION=1 -DLIB_PICO_SYNC_MUTEX=1 -DLIB_PICO_SYNC_SEM=1 -DPICO_BUILD=1 -DPICO_COPY_TO_RAM=0 -DPICO_CXX_ENABLE_EXCEPTIONS=0 -DPICO_EXTRAS=1 -DPICO_NO_FLASH=0 -DPICO_NO_HARDWARE=0 -DPICO_ON_DEVICE=1 -DPICO_USE_BLOCKED_RAM=0 -I$PicoSDK/src/common/pico_stdlib/include"
+Stat "Listing dirs to include from the SDK"
+	Count=0
+	for Dir in "${DirsToUse[@]}"; do
+		DirName=$(basename "$Dir")
+		if [ -d "$Dir/include" ];then
+			Flags="$Flags -I$Dir/include"
+			Count=$(($Count+1))
+		elif [ $DirName == "include" ] && [ -d "$Dir" ];then
+			Flags="$Flags -I$Dir"
+			Count=$(($Count+1))
+		fi
+	done
+	AsmFlags="$AsmFlags -I$PicoSDK/src/rp2_common/boot_stage2/include"
+Stat "Included $Count directories from the SDK"
+Stat "Finding files to compile"
+	find "${DirsToUse[@]}" \( -name "include" -o -name "*_none.S" -prune \) -o \( -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.S" \) -print0 \) > $Obj/FilesToCompileTheLib &
+	find "$CDir" \( -name "*.c" -o -name "*.cpp" -o -name "*.S" \) -print0 > $Obj/FilesToCompileTheProject
+	wait
+	
+	MaxCount=$(($(cat $Obj/FilesToCompileTheLib | tr -cd '\0' | wc -c)+$(cat $Obj/FilesToCompileTheProject | tr -cd '\0' | wc -c)))
+Stat "$MaxCount files to compile"
+Stat "Choosing compilers"
+	AsmFlags="$Flags $AsmFlags"
+	CFlags="$AsmFlags $CFlags"
+	CPPFlags="$AsmFlags $CPPFlags"
+	for Step in Asm C CPP;do
+		eval "List=(\"\${${Step}s[@]}\")"
+		Size=${#List[@]}
+		for((i=0;i<$Size;i++));do
+			if [ "${!Step}" != "" ];then break;fi
+			Thing="${List[$i]}"
+			Flags="${Step}Flags"
+			$Thing ${!Flags} - -c -o /dev/null </dev/null>/dev/null 2>&1
+			if [ "$?" == 0 ];then
+				export "$Step"="$Thing"
+			fi
+		done
+	done
+Stat "Used compilers:"
+	for Step in Asm C CPP;do
+		echo "	$Step: ${!Step}"
+	done
+	if [ "$Asm" == "" ] || [ "$C" == "" ] || [ "$CPP" == "" ];then
+		End "Incomplete ARM toolchain\x1B[m\nPlease run the SetupPico script by Léolol DB\nor manually install a C and C++ assembler and linker."
+	fi
+Stat "Launching $MaxCount compile processes"
+	FilesToLinkTheLib=""
+	FilesToLinkTheProject=""
+	for Thing in Lib Project;do
+		FilesToLinkTheThing="FilesToLinkThe$Thing"
+		while IFS= read -r -d '' FilePath;do
+			File=$(basename "$FilePath")
+			CutFilePath="${FilePath%.*}"
+			ThisObj="$Obj/${CutFilePath:$((${#PicoSDK}+1))}.o"
+			(
+				#Recognize file type
+				
+				if [[ $File == *.c ]];then		Com="$C $CFlags"
+				elif [[ $File == *.cpp ]];then	Com="$CPP $CPPFlags"
+				elif [[ $File == *.S ]];then	Com="$Asm $AsmFlags"
+				elif [[ $File == *.cxx ]];then	Com="$CPP $CPPFlags"
+				elif [[ $File == *.cc ]];then	Com="$CPP $CPPFlags"
+				else continue;fi
+				
+				SrcDate=$(date -R -r "$FilePath")
+				ObjDate=""
+				if [ -f "$ThisObj" ];then
+					ObjDate=$(date -R -r "$ThisObj")
+				fi
+				if [ "$SrcDate" != "$ObjDate" ];then
+					mkdir -p $(dirname "${ThisObj}")
+					$Com -c "$FilePath" -o "$ThisObj"
+					touch -d "$SrcDate" "$ThisObj"
+					if [ $? != 0 ];then End;fi
+					Stat "	Compiled $File"
+				fi
+			)& export "$FilesToLinkTheThing"="${!FilesToLinkTheThing} $ThisObj"
+		done < $Obj/FilesToCompileThe$Thing
+	done
+Stat "Listing Linking parameters"
+	#Enable custom definitions of many functions
+	for i in sprintf snprintf vsnprintf __clzsi2 __clzdi2 __ctzsi2 __ctzdi2 __popcountsi2 __popcountdi2 __clz __clzl __clzll __aeabi_idiv __aeabi_idivmod __aeabi_ldivmod __aeabi_uidiv __aeabi_uidivmod __aeabi_uldivmod __aeabi_dadd __aeabi_ddiv __aeabi_dmul __aeabi_drsub __aeabi_dsub __aeabi_cdcmpeq __aeabi_cdrcmple __aeabi_cdcmple __aeabi_dcmpeq __aeabi_dcmplt __aeabi_dcmple __aeabi_dcmpge __aeabi_dcmpgt __aeabi_dcmpun __aeabi_i2d __aeabi_l2d __aeabi_ui2d __aeabi_ul2d __aeabi_d2iz __aeabi_d2lz __aeabi_d2uiz __aeabi_d2ulz __aeabi_d2f sqrt cos sin tan atan2 exp log ldexp copysign trunc floor ceil round sincos asin acos atan sinh cosh tanh asinh acosh atanh exp2 log2 exp10 log10 pow powint hypot cbrt fmod drem remainder remquo expm1 log1p fma __aeabi_lmul __aeabi_fadd __aeabi_fdiv __aeabi_fmul __aeabi_frsub __aeabi_fsub __aeabi_cfcmpeq __aeabi_cfrcmple __aeabi_cfcmple __aeabi_fcmpeq __aeabi_fcmplt __aeabi_fcmple __aeabi_fcmpge __aeabi_fcmpgt __aeabi_fcmpun __aeabi_i2f __aeabi_l2f __aeabi_ui2f __aeabi_ul2f __aeabi_f2iz __aeabi_f2lz __aeabi_f2uiz __aeabi_f2ulz __aeabi_f2d sqrtf cosf sinf tanf atan2f expf logf ldexpf copysignf truncf floorf ceilf roundf sincosf asinf acosf atanf sinhf coshf tanhf asinhf acoshf atanhf exp2f log2f exp10f log10f powf powintf hypotf cbrtf fmodf dremf remainderf remquof expm1f log1pf fmaf malloc calloc realloc free memcpy memset __aeabi_memcpy __aeabi_memset __aeabi_memcpy4 __aeabi_memset4 __aeabi_memcpy8 __aeabi_memset8 printf vprintf puts putchar getchar;do 
+		LDFlags="$LDFlags -Wl,--wrap=$i"
+	done
+	LDFlags="$LDFlags -Wl,--script=$RP2XXX/pico_standard_link/memmap_default.ld -Wl,-z,max-page-size=4096 -Wl,--gc-sections"
+Stat "Waiting the files to be compiled"
+	wait
+#Choosing the linker
+	if [ "$LD" == "" ];then	Stat "Choosing a linker"
+		Size=${#LDs[@]}
+		echo "int main(){return 0;}" | $CPP $CPPFlags -c - -o "$Obj/Empty.o"
+		for((i=0;i<$Size;i++));do
+			LDTest="${LDs[$i]}"
+			$LDTest $LDFlags $FilesToLinkTheLib "$Obj/Empty.o" -o "$Bin" >/dev/null 2>&1
+			if [ "$?" == 0 ];then
+				LD="$LDTest"
+				break;
+			fi
+		done
+	fi
+	echo "	LD: $LD"
+	if [ "$LD" == "" ];then
+		End "Incomplete ARM toolchain.\x1B[m\nRun the SetupPico script by Léolol DB\nor manually install an ARM linker."
+	fi
+Stat "Linking"
+	$LD $LDFlags $FilesToLinkTheLib $FilesToLinkTheProject -o $Bin -Wl,-Map=$Bin.map
+	if [ $? != 0 ];then End;fi
+Stat "Converting into multiple binary kinds"
+	/usr/bin/arm-none-eabi-objcopy -Oihex $Bin $Bin.hex &
+	(/usr/bin/arm-none-eabi-objdump -h $Bin > $Bin.dis
+	/usr/bin/arm-none-eabi-objdump -d $Bin >> $Bin.dis)&
+	/usr/bin/arm-none-eabi-objcopy -Obinary $Bin $Bin.bin
+	$PicoSDK/tools/elf2uf2/elf2uf2 $Bin $Bin.uf2
+	wc -c $Bin.bin
+Stat "Finished"
+	

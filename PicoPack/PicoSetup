@@ -1,0 +1,140 @@
+#!/bin/bash
+#Setup script to install the Raspberry Pi Pico's SDK to work no other way than with Léolol DB's Compile script..
+#
+#Expects to be at the root of the project's directory
+#Requires the PicoSetup script from Léolol DB to have been run once
+#This script is built to always succeed by default, as long as the project doesn't contain errors
+#
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#								+===========+								#
+#								|  LICENSE  |								#
+#								+===========+								#
+# This is licensed under the terms of the Lebray Open\-Source License NW	#
+#																			#
+# This program was made in the hope to be useful WITHOUT ANY WARRANTY,		#
+# not even the warranty for the program to work nor to fit any purpose.		#
+# The user is solely responsible for their use of the program. This			#
+# program may be modified by anyone and shared to anyone but the program	#
+# alone must never be sold, as it's already available freely (⋅-. )			#
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+# Although hard-work has been put to make an helpful program that works out of the box unlike GNU, it might still fail.
+#By Léolol DB from the 7/23/04/2023 to the 6/29/04/2023
+set -e	# Exit on error
+
+BigCmd(){
+	echo -e "\x1B[34m$1\x1B[m"
+	$1
+}
+BigCmdMayFail(){
+	echo -e "\x1B[34m$1\x1B[m"
+	set +e	
+	$1
+	set -e 
+}
+Stat(){
+	echo -e "\x1B[32m$1\x1B[m"
+}
+
+Stat "Setup script to install the Raspberry Pi Pico's SDK"
+echo "Expected to work with Léolol DB's Compile script"
+echo "Note: This script has only been tested with LinuxMint."
+echo "This script won't install bloats nor extras that are not strictly necessary, so do it yourself if you want.\n"
+
+echo -e -n "\x1B[36m"
+read -p "Install pico-extras to have some extra libraries? (Y/N)  " Extras
+read -p "Install pico-examples to have some simple examples? (Y/N)  " Examples
+read -p "Install pico-playground to have some complex examples? (Y/N)  " Playground
+read -p "Install Minicom to allow debugging through a VT100-like terminal? (Y/N)  " Minicom
+echo
+
+read -p "Path to install PicoSDK and other folders: " OutDir
+OutDir="$(realpath "$OutDir")"
+echo -e "\x1B[m"
+
+echo "	Current setup:"
+if [ "$Extras" != "Y" ];then	echo -n -e "\x1B[9m";fi
+echo -e "pico-extras\x1B[29m"
+if [ "$Examples" != "Y" ];then	echo -n -e "\x1B[9m";fi
+echo -e "pico-examples\x1B[29m"
+if [ "$Playground" != "Y" ];then	echo -n -e "\x1B[9m";fi
+echo -e "pico-playground\x1B[29m"
+if [ "$Minicom" != "Y" ];then	echo -n -e "\x1B[9m";fi
+echo -e "Minicom\x1B[29m"
+echo "$OutDir"
+
+
+echo
+echo -e "\x1B[38;5;244mIf this script freezes/fails → restart it,\nif same issue → rm $OutDir/* -r\nif the issue persist, sorry, that's Linux.\n\x1B[36m"
+read -p "Start? (Y/N) " Yes
+echo -e "\x1B[m"
+RepoToInstall=("SDK")
+if [ "$Yes" != "Y" ];then exit; fi
+if [ "$Extras" == "Y" ];then		RepoToInstall+=("Extras");fi
+if [ "$Examples" == "Y" ];then		RepoToInstall+=("Examples");fi
+if [ "$Playground" == "Y" ];then	RepoToInstall+=("Playground");fi
+
+
+Stat "Installing Dependencies"
+BigCmdMayFail "sudo apt update"
+BigCmd "sudo apt install -y git"
+Stat "Installing Dependencies and Cloning repositories"
+BigCmd "sudo apt install -y cmake gcc-arm-none-eabi gcc g++" &
+mkdir -p $OutDir
+cd $OutDir
+
+for Repo in ${RepoToInstall[@]};do
+	WrongDir="$OutDir/pico-${Repo,,}"
+	Dir="$OutDir/$Repo"
+
+	VarName="PICO_${Repo^^}_PATH"
+	export $VarName="$Dir"
+	if [ ! -d "$Dir" ]; then
+		if [ ! -d "$WrongDir" ];then
+			Stat "Copying the $Repo from GitHub"
+			RepoURL="https://github.com/raspberrypi/pico-${Repo,,}.git"
+			cd "$OutDir" && git clone -b "master" $RepoURL
+		fi
+		cd "$WrongDir" && git submodule update --init
+		mv "$WrongDir" "$Dir"
+		
+		#Define several variables in ~/.bashrc
+		echo "Adding $VarName to ~/.bashrc"
+		echo "export $VarName=$Dir" >> ~/.bashrc
+	else echo "$Dir already present";fi
+done
+source ~/.bashrc
+wait
+
+(
+	PicoSDK="$PICO_SDK_PATH"
+	Stat "Building blink using the slow cmake and make to have the necessary things"
+	echo "(cuz I'm too lazy to make a compile script for the PicoSDK)"
+	cd "$PicoSDK" && mkdir -p build && cd build
+	
+	cmake ../ -DCMAKE_BUILD_TYPE=Release
+	(
+		cd test/kitchen_sink/
+		make
+		mv ../../src/rp2_common/boot_stage2/bs2_default_padded_checksummed.S -t ../../../src/rp2_common/boot_stage2/
+	) & (
+		PicoInclude="$PicoSDK/src/rp2040/include"
+		mkdir -p "$PicoInclude"
+		mv generated/pico_base/pico -t "$PicoInclude"
+		echo -e "#include \"../../../boards/include/boards/pico.h\"\n#include \"../../../rp2_common/cmsis/include/cmsis/rename_exceptions.h\"">"$PicoInclude/pico/config_autogen.h"
+	)
+	wait
+	mv elf2uf2/elf2uf2 -t ../tools/elf2uf2/
+	cd ..
+	rm -r build .git .github docs cmake external test .gitignore .gitmodules CMakeLists.txt CONTRIBUTING.md pico_sdk_init.cmake pico_sdk_version.cmake README.md
+) & if [[ "$Minicom" == "Y" ]]; then
+	BigCmd "sudo apt install -y minicom"
+	if grep -q Raspberry /proc/cpuinfo;then
+		echo "Disabling Linux serial console (UART) so we can use it for pico"
+		sudo raspi-config nonint do_serial 2
+		Stat "You must reboot to finish UART setup"
+	fi
+fi
+wait
+Stat Finished!
+echo "If you want to test it, please log in to a new terminal to refresh .bashrc"
